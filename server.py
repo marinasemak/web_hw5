@@ -1,5 +1,8 @@
 import asyncio
 import logging
+from pprint import pprint
+
+import aiohttp
 import websockets
 import names
 from websockets import WebSocketServerProtocol
@@ -14,11 +17,11 @@ class Server:
     async def register(self, ws: WebSocketServerProtocol):
         ws.name = names.get_full_name()
         self.clients.add(ws)
-        logging.info(f'{ws.remote_address} connects')
+        logging.info(f"{ws.remote_address} connects")
 
     async def unregister(self, ws: WebSocketServerProtocol):
         self.clients.remove(ws)
-        logging.info(f'{ws.remote_address} disconnects')
+        logging.info(f"{ws.remote_address} disconnects")
 
     async def send_to_clients(self, message: str):
         if self.clients:
@@ -27,21 +30,39 @@ class Server:
     async def ws_handler(self, ws: WebSocketServerProtocol):
         await self.register(ws)
         try:
-            await self.distrubute(ws)
+            await self.distribute(ws)
         except ConnectionClosedOK:
             pass
         finally:
             await self.unregister(ws)
 
-    async def distrubute(self, ws: WebSocketServerProtocol):
+    @staticmethod
+    async def handle_command():
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                "https://api.privatbank.ua/p24api/pubinfo?json&exchange&coursid=5",
+                ssl=False,
+            ) as response:
+                print(response.ok)
+                result = await response.json()
+                return result
+
+    async def distribute(self, ws: WebSocketServerProtocol):
         async for message in ws:
-             await self.send_to_clients(f"{ws.name}: {message}")
+            if message == "exchange":
+                print("current currency rate")
+                result = await self.handle_command()
+                for el in result:
+                    await self.send_to_clients(f"{el}\n")
+            else:
+                await self.send_to_clients(f"{ws.name}: {message}")
 
 
 async def main():
     server = Server()
-    async with websockets.serve(server.ws_handler, 'localhost', 8080):
+    async with websockets.serve(server.ws_handler, "localhost", 8080):
         await asyncio.Future()  # run forever
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     asyncio.run(main())

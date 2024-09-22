@@ -8,15 +8,15 @@ from pprint import pprint
 import aiohttp
 
 BASE_URL = "https://api.privatbank.ua/p24api/exchange_rates?json&date="
+DEFAULT_CURRENCIES = {"EUR", "USD"}
 
 logging.basicConfig(level=logging.INFO, format="%(threadName)s %(message)s")
 
 parser = argparse.ArgumentParser(description="Example CLI using argparse")
 parser.add_argument("days", type=int, help="An integer number")
-parser.add_argument("currency", type=str, nargs="*", help="Currency codes")
+parser.add_argument("currency", type=str, nargs="*", help="Currency codes (optional)")
 days_quantity = parser.parse_args().days
-currencies = parser.parse_args().currency
-print(currencies)
+currencies = set(parser.parse_args().currency)
 
 today = date.today()
 
@@ -29,8 +29,10 @@ else:
     print("Enter days quantity between 1 and 10")
     sys.exit()
 
+currencies_list = DEFAULT_CURRENCIES | {x.upper() for x in currencies}
 
-async def get_currency(url: str, session) -> dict:
+
+async def get_currency_rate(url: str, session) -> dict:
     url = url
     dict_currency = {}
     logging.info(f"Starting {url}")
@@ -44,7 +46,7 @@ async def get_currency(url: str, session) -> dict:
                         "purchase": i["purchaseRateNB"],
                     }
                     for i in all_data["exchangeRate"]
-                    if i.get("currency") == "EUR" or i.get("currency") == "USD"
+                    if i.get("currency") in currencies_list
                 }
                 dict_currency = {all_data["date"]: one_day_currencies}
             else:
@@ -59,7 +61,7 @@ async def main():
 
     async with aiohttp.ClientSession() as session:
         for url in urls:
-            result.append(get_currency(url, session))
+            result.append(get_currency_rate(url, session))
         return await asyncio.gather(*result)
 
 
