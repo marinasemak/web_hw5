@@ -1,12 +1,13 @@
 import asyncio
 import logging
-from pprint import pprint
 
 import aiohttp
-import websockets
 import names
+import websockets
 from websockets import WebSocketServerProtocol
 from websockets.exceptions import ConnectionClosedOK
+
+from functions import main as extended_command
 
 logging.basicConfig(level=logging.INFO)
 
@@ -38,24 +39,34 @@ class Server:
 
     @staticmethod
     async def handle_command():
+        """
+        handle command "exchange" from input field
+        """
         async with aiohttp.ClientSession() as session:
             async with session.get(
                 "https://api.privatbank.ua/p24api/pubinfo?json&exchange&coursid=5",
                 ssl=False,
             ) as response:
-                print(response.ok)
                 result = await response.json()
-                return result
+            return result
 
     async def distribute(self, ws: WebSocketServerProtocol):
         async for message in ws:
-            if message == "exchange":
-                print("current currency rate")
-                result = await self.handle_command()
-                for el in result:
-                    await self.send_to_clients(f"{el}\n")
-            else:
-                await self.send_to_clients(f"{ws.name}: {message}")
+            try:
+                if message == "exchange":
+                    result = await self.handle_command()
+                    for el in result:
+                        await self.send_to_clients(f"{el}\n")
+                elif message.split()[0] == "exchange" and message.split()[1].isdigit():
+                    result = await extended_command(
+                        int(message.split()[1]), currencies=None
+                    )
+                    for el in result:
+                        await self.send_to_clients(f"{el}\n")
+                else:
+                    await self.send_to_clients(f"{ws.name}: {message}")
+            except IndexError:
+                await self.send_to_clients(f"Enter some text or command")
 
 
 async def main():
